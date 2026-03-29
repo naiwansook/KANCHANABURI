@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Resort Manager Pro',
-  description: 'ระบบจัดการรีสอร์ท',
+  title: 'Facebook Ad Manager',
+  description: 'ระบบยิงแอดเฟสบุ๊คอัตโนมัติ',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
