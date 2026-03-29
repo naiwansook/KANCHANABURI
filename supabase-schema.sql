@@ -1,185 +1,138 @@
 -- =====================================================
--- Resort Manager Pro - Supabase Schema
--- Run this in Supabase SQL Editor
+-- Facebook Ad Manager - Database Schema
 -- =====================================================
 
--- Enable UUID extension
-create extension if not exists "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- =====================================================
--- USERS / AUTH TABLE
+-- 1. user_logins - Authentication
 -- =====================================================
-create table if not exists user_logins (
-  id bigserial primary key,
-  username text unique not null,
-  password_hash text not null,
-  role text not null default 'staff', -- owner | admin | staff
-  display_name text,
-  permissions text default 'all',
-  created_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS user_logins (
+  id BIGSERIAL PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  display_name TEXT,
+  role TEXT DEFAULT 'admin',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO user_logins (username, password_hash, display_name, role)
+VALUES ('admin', 'admin123', 'ผู้ดูแลระบบ', 'owner')
+ON CONFLICT (username) DO NOTHING;
+
+-- =====================================================
+-- 2. fb_connections - Facebook Account Connections
+-- =====================================================
+CREATE TABLE IF NOT EXISTS fb_connections (
+  id BIGSERIAL PRIMARY KEY,
+  user_login_id BIGINT REFERENCES user_logins(id) ON DELETE CASCADE,
+  fb_user_id TEXT NOT NULL,
+  fb_user_name TEXT,
+  user_access_token TEXT NOT NULL,
+  token_expires_at TIMESTAMPTZ,
+  ad_account_id TEXT,
+  ad_account_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- =====================================================
--- RESORT PROFILE
+-- 3. fb_pages - Facebook Pages
 -- =====================================================
-create table if not exists resort_profile (
-  id bigserial primary key,
-  name text default 'My Resort',
-  image_url text default '',
-  updated_at timestamptz default now()
-);
-insert into resort_profile (name) values ('Resort Manager Pro') on conflict do nothing;
-
--- =====================================================
--- ROOMS
--- =====================================================
-create table if not exists rooms (
-  id bigserial primary key,
-  name text not null,
-  bathroom_type text default 'private', -- private | separate | shared
-  price_per_night numeric default 0,
-  max_guests integer default 2,
-  description text default '',
-  status text default 'available', -- available | maintenance | unavailable
-  images jsonb default '[]',
-  amenities text default '',
-  extra_bed_price numeric default 0,
-  room_label text default '',
-  weekend_price_fri numeric default 0,
-  weekend_price_sat numeric default 0,
-  weekend_price_sun numeric default 0,
-  holiday_price numeric default 0,
-  extra_bed_adult_price numeric default 0,
-  extra_bed_child_price numeric default 0,
-  extra_bed_adult_holiday_price numeric default 0,
-  extra_bed_child_holiday_price numeric default 0,
-  created_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS fb_pages (
+  id BIGSERIAL PRIMARY KEY,
+  connection_id BIGINT REFERENCES fb_connections(id) ON DELETE CASCADE,
+  page_id TEXT NOT NULL UNIQUE,
+  page_name TEXT NOT NULL,
+  page_category TEXT,
+  page_picture TEXT,
+  page_access_token TEXT NOT NULL,
+  fan_count BIGINT DEFAULT 0,
+  is_selected BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- =====================================================
--- BOOKINGS
+-- 4. ad_campaigns - Ad Campaigns
 -- =====================================================
-create table if not exists bookings (
-  id bigserial primary key,
-  customer_name text not null,
-  customer_phone text default '',
-  customer_email text default '',
-  customer_line text default '',
-  room_id bigint references rooms(id) on delete set null,
-  room_name text default '',
-  check_in date not null,
-  check_out date not null,
-  guests integer default 1,
-  nights integer default 1,
-  total_price numeric default 0,
-  status text default 'pending', -- pending | confirmed | checked_in | checked_out | cancelled
-  payment_status text default 'unpaid', -- unpaid | deposit | paid
-  notes text default '',
-  created_at timestamptz default now(),
-  created_by text default '',
-  deposit_amount numeric default 0,
-  deposit_paid_at timestamptz,
-  remaining_balance numeric default 0,
-  extra_beds integer default 0,
-  extra_bed_total numeric default 0,
-  extra_beds_adult integer default 0,
-  extra_beds_child integer default 0,
-  booking_source text default 'walkin'
+CREATE TABLE IF NOT EXISTS ad_campaigns (
+  id BIGSERIAL PRIMARY KEY,
+  page_id TEXT NOT NULL,
+  page_name TEXT,
+  fb_campaign_id TEXT,
+  fb_adset_id TEXT,
+  fb_ad_id TEXT,
+  fb_creative_id TEXT,
+  post_id TEXT NOT NULL,
+  post_message TEXT,
+  post_image_url TEXT,
+  post_created_time TIMESTAMPTZ,
+  campaign_name TEXT NOT NULL,
+  objective TEXT DEFAULT 'OUTCOME_ENGAGEMENT',
+  status TEXT DEFAULT 'ACTIVE',
+  budget_type TEXT DEFAULT 'DAILY',
+  budget_amount DECIMAL(12,2) NOT NULL,
+  spent_amount DECIMAL(12,2) DEFAULT 0,
+  start_date DATE NOT NULL,
+  end_date DATE,
+  targeting JSONB DEFAULT '{}',
+  impressions BIGINT DEFAULT 0,
+  reach BIGINT DEFAULT 0,
+  clicks BIGINT DEFAULT 0,
+  ctr DECIMAL(8,4) DEFAULT 0,
+  cpc DECIMAL(12,4) DEFAULT 0,
+  frequency DECIMAL(6,2) DEFAULT 0,
+  ai_score INTEGER DEFAULT 0,
+  ai_recommendation TEXT,
+  ai_recommendation_type TEXT,
+  ai_analyzed_at TIMESTAMPTZ,
+  created_by BIGINT REFERENCES user_logins(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- =====================================================
--- TRANSACTIONS (Income/Expense)
+-- 5. ad_performances - Daily Performance
 -- =====================================================
-create table if not exists transactions (
-  id bigserial primary key,
-  date date not null,
-  category text not null,
-  type text not null, -- income | expense
-  amount numeric not null default 0,
-  description text default '',
-  created_by text default '',
-  created_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS ad_performances (
+  id BIGSERIAL PRIMARY KEY,
+  campaign_id BIGINT REFERENCES ad_campaigns(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  impressions BIGINT DEFAULT 0,
+  reach BIGINT DEFAULT 0,
+  clicks BIGINT DEFAULT 0,
+  ctr DECIMAL(8,4) DEFAULT 0,
+  cpc DECIMAL(12,4) DEFAULT 0,
+  spend DECIMAL(12,2) DEFAULT 0,
+  frequency DECIMAL(6,2) DEFAULT 0,
+  actions JSONB DEFAULT '[]',
+  fetched_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(campaign_id, date)
 );
 
 -- =====================================================
--- CATEGORIES
+-- 6. ad_recommendations - AI History
 -- =====================================================
-create table if not exists categories (
-  id bigserial primary key,
-  name text not null,
-  type text not null, -- income | expense
-  color text default '#4361ee',
-  created_at timestamptz default now()
-);
-
--- Default categories
-insert into categories (name, type, color) values
-  ('ค่าห้องพัก', 'income', '#10b981'),
-  ('รายได้อื่นๆ', 'income', '#3b82f6'),
-  ('ค่าอาหาร', 'expense', '#ef4444'),
-  ('ค่าไฟฟ้า', 'expense', '#f59e0b'),
-  ('ค่าน้ำ', 'expense', '#06b6d4'),
-  ('ค่าซ่อมบำรุง', 'expense', '#8b5cf6'),
-  ('ค่าแรงงาน', 'expense', '#ec4899'),
-  ('ค่าใช้จ่ายอื่นๆ', 'expense', '#64748b')
-on conflict do nothing;
-
--- =====================================================
--- BUDGETS
--- =====================================================
-create table if not exists budgets (
-  id bigserial primary key,
-  month_year text not null, -- format: 2025-01
-  category_name text not null,
-  amount numeric default 0,
-  created_at timestamptz default now(),
-  unique(month_year, category_name)
+CREATE TABLE IF NOT EXISTS ad_recommendations (
+  id BIGSERIAL PRIMARY KEY,
+  campaign_id BIGINT REFERENCES ad_campaigns(id) ON DELETE CASCADE,
+  recommendation_type TEXT NOT NULL,
+  score INTEGER DEFAULT 0,
+  recommendation_th TEXT NOT NULL,
+  recommendation_detail TEXT,
+  metrics_snapshot JSONB DEFAULT '{}',
+  acted_on BOOLEAN DEFAULT FALSE,
+  acted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- =====================================================
--- PDF CONFIG (stored per user in browser localStorage is fine,
--- but for server-side persistence use this table)
+-- Indexes
 -- =====================================================
-create table if not exists pdf_config (
-  id bigserial primary key,
-  resort_name text default '',
-  prefix text default 'RCI',
-  address text default '',
-  phone text default '',
-  facebook text default '',
-  email text default '',
-  signer text default '',
-  pay_method text default '',
-  notes text default '',
-  terms text default '',
-  logo_url text default '',
-  signature_url text default '',
-  updated_at timestamptz default now()
-);
-insert into pdf_config (resort_name) values ('') on conflict do nothing;
-
--- =====================================================
--- ROW LEVEL SECURITY (Optional - disable for simplicity)
--- For production, enable and configure per your auth strategy
--- =====================================================
--- alter table rooms enable row level security;
--- alter table bookings enable row level security;
--- etc.
-
--- =====================================================
--- INDEXES for performance
--- =====================================================
-create index if not exists idx_bookings_room_id on bookings(room_id);
-create index if not exists idx_bookings_check_in on bookings(check_in);
-create index if not exists idx_bookings_status on bookings(status);
-create index if not exists idx_transactions_date on transactions(date);
-create index if not exists idx_transactions_type on transactions(type);
-
--- =====================================================
--- INSERT DEFAULT OWNER (change password after setup!)
--- Password is stored as plaintext here for simplicity.
--- In production, use bcrypt hashing.
--- =====================================================
-insert into user_logins (username, password_hash, role, display_name, permissions)
-values ('admin', 'admin123', 'owner', 'Administrator', 'all')
-on conflict (username) do nothing;
+CREATE INDEX IF NOT EXISTS idx_ad_campaigns_page_id ON ad_campaigns(page_id);
+CREATE INDEX IF NOT EXISTS idx_ad_campaigns_status ON ad_campaigns(status);
+CREATE INDEX IF NOT EXISTS idx_ad_campaigns_created_at ON ad_campaigns(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ad_performances_campaign_date ON ad_performances(campaign_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_ad_recommendations_campaign ON ad_recommendations(campaign_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_fb_pages_page_id ON fb_pages(page_id);
